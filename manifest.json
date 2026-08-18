@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Poly Noti",
+  "version": "0.6.7",
+  "description": "Desktop notifications for Polymarket trader activity. Watch any wallet by address — no wallet connection required.",
+  "permissions": ["storage", "alarms", "notifications"],
+  "host_permissions": [
+    "https://data-api.polymarket.com/*",
+    "https://gamma-api.polymarket.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Poly Noti",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- ------------------------------------------------------------- feed -->
+  <main class="screen" id="feed-screen">
+    <header class="head">
+      <div class="head-text">
+        <p class="eyebrow">Poly Noti</p>
+        <h1>Activity feed</h1>
+      </div>
+      <div class="head-actions">
+        <button class="icon-btn" id="refresh-btn" title="Refresh now" aria-label="Refresh now">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>
+        </button>
+        <button class="icon-btn" id="settings-btn" title="Quick settings" aria-label="Quick settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="chips" id="chips"></nav>
+
+    <!--
+      Shown only when the OS has notifications switched off for Chrome. Sits
+      above the feed rather than in the drawer: the whole point is that you
+      have not seen a toast, so it has to be on the screen you already open.
+      Hidden by default — the common case is granted, and a banner that flashes
+      on every popup open before the async check resolves would read as an error.
+    -->
+    <div class="notice" id="perm-notice" role="status" hidden>
+      <span class="notice-icon" aria-hidden="true">🔕</span>
+      <div class="notice-text">
+        <strong>Desktop notifications are blocked</strong>
+        <p>Your system is not showing Chrome's notifications, so Poly Noti can't alert you. Activity is still recorded here.</p>
+      </div>
+      <button class="notice-fix" id="perm-notice-fix">How to fix</button>
+    </div>
+
+    <!--
+      Why the last refresh came back with nothing. Only ever populated on the
+      failure path — a poll that worked says nothing, because the feed below is
+      the answer. role="status" so a screen reader hears it when it appears
+      without being yanked out of whatever it was reading, which is what
+      role="alert" would do for something this recoverable.
+    -->
+    <p class="poll-status" id="poll-status" role="status" hidden></p>
+
+    <section class="feed" id="feed"></section>
+  </main>
+
+  <!-- --------------------------------------------------------- settings -->
+  <aside class="drawer" id="drawer" hidden>
+    <header class="head">
+      <div class="head-text">
+        <p class="eyebrow">Control center</p>
+        <h1>Quick settings</h1>
+      </div>
+      <button class="icon-btn" id="drawer-close" title="Close" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+
+    <div class="drawer-body">
+      <!--
+        Add trader sits in the section head rather than as a full-width block
+        above it: the action belongs to the list it extends, and the count
+        belongs to the words it counts. See .head-label in popup.css.
+      -->
+      <section class="block">
+        <div class="block-head">
+          <span class="head-label">
+            <h2>Watched traders</h2>
+            <span class="count" id="trader-count">0</span>
+          </span>
+          <button class="primary-btn inline" id="add-trader-btn">
+            <span class="plus">+</span> Add trader
+          </button>
+        </div>
+        <div id="trader-list" class="trader-list"></div>
+      </section>
+
+      <hr class="rule">
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Notifications</h2>
+        </div>
+        <!--
+          Two switches, each named, and deliberately not the same axis. The first
+          is the toast channel: stop interrupting me, keep recording. The second
+          is the traders themselves — the bulk form of the switch on every row in
+          Watched traders, so it carries that switch's full meaning (no toast, no
+          badge, out of the unfiltered feed) rather than being a second mute on
+          toasts alone. Both are labelled because the section previously held an
+          unlabelled toggle, which never said what it turned off.
+        -->
+        <label class="setting-row" for="notif-toggle">
+          <span class="setting-text">
+            <strong>Show desktop notifications</strong>
+            <span class="setting-sub">Off still records everything to the feed below.</span>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="notif-toggle" checked>
+            <span class="track"></span>
+          </span>
+        </label>
+        <label class="setting-row" for="trader-notif-toggle">
+          <span class="setting-text">
+            <strong>Show trader notifications</strong>
+            <span class="setting-sub">Mutes every watched trader at once. Each one keeps its own setting for when you turn this back on.</span>
+          </span>
+          <span class="switch">
+            <input type="checkbox" id="trader-notif-toggle" checked>
+            <span class="track"></span>
+          </span>
+        </label>
+      </section>
+
+      <hr class="rule">
+
+      <!--
+        A subscription, not a filter. Nothing is watched on a fresh install, so
+        this block starts inert and stays that way until you add a keyword or
+        pick a category — the worker doesn't even call Gamma before then.
+
+        It is a card rather than a run of drawer rows because it is the one
+        feature here that isn't about a trader: its own switch, its own
+        keywords, its own picker. The switch lives on the card for the same
+        reason it isn't up in Notifications — it belongs to the thing it
+        silences. Cards still arrive in the feed when it is off, the same
+        bargain the master switch strikes.
+      -->
+      <section class="block">
+        <div class="discovery">
+          <div class="disc-head">
+            <span class="disc-tile" aria-hidden="true">✦</span>
+            <div class="disc-text">
+              <p class="eyebrow">Discovery</p>
+              <h3>New market alerts</h3>
+            </div>
+            <!-- The label is the switch itself: there is no text to click, so
+                 wrapping the input is what makes the 46px track a hit target. -->
+            <label class="switch">
+              <input type="checkbox" id="market-notif-toggle" checked>
+              <span class="track"></span>
+            </label>
+          </div>
+          <p class="disc-sub">Find new Polymarket markets before the crowd.</p>
+
+          <form class="row watch-add" id="watch-form">
+            <div class="field-wrap">
+              <input type="text" id="watch-input" class="field" placeholder="KEYWORD, E.G. MRBEAST" autocomplete="off" spellcheck="false">
+            </div>
+            <button class="round-btn" id="watch-add" type="submit" title="Watch this keyword" aria-label="Watch this keyword">+</button>
+          </form>
+          <p class="error" id="watch-error" hidden></p>
+          <div class="watch-tags" id="watch-list"></div>
+
+          <button class="disc-row" id="categories-open">
+            <span class="disc-row-label">Choose categories</span>
+            <span class="disc-row-value" id="category-summary">Choose categories</span>
+            <svg viewBox="0 0 24 24" class="chev" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <hr class="rule">
+
+      <!--
+        Add label wears Add trader's pill, for the same reason and in the same
+        place. The two sections do the same kind of thing — extend a list you
+        own — and a bare + here under a named button up there read as two
+        different affordances for one gesture. No aria-label: the button now
+        says what it does, and a label would only override its own words.
+      -->
+      <section class="block">
+        <div class="block-head">
+          <h2>Label groups</h2>
+          <button class="primary-btn inline" id="add-label-btn">
+            <span class="plus">+</span> Add label
+          </button>
+        </div>
+        <div id="label-list" class="label-list"></div>
+      </section>
+
+      <hr class="rule">
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Minimum trade size</h2>
+          <span class="count" id="threshold-value">$0</span>
+        </div>
+        <input type="range" id="threshold" min="0" max="10" step="1" value="0" class="slider">
+        <p class="hint" id="threshold-hint">Trades below this value raise no notification and stay out of the feed.</p>
+      </section>
+
+      <hr class="rule">
+
+      <!--
+        The one collapsed section in the drawer, and the last one on purpose:
+        what is inside changes what the worker asks the API for, which is a
+        heavier decision than any switch above it. Folded away so the drawer
+        still reads as five plain settings, and openable for the one person in
+        a hundred who wants the accounting rows.
+
+        A button + panel rather than <details>/<summary>: the chevron has to
+        rotate and the row has to wear .disc-row's metrics, and styling a
+        summary marker across those is more fighting than writing. aria-expanded
+        and aria-controls carry what <summary> would have given for free.
+      -->
+      <section class="block">
+        <button class="disc-row adv-row" id="advanced-open" aria-expanded="false" aria-controls="advanced-panel">
+          <span class="disc-row-label">Advanced settings</span>
+          <svg viewBox="0 0 24 24" class="chev" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+        <div class="adv-panel" id="advanced-panel" hidden>
+          <div class="block-head tight">
+            <h2>Activity types</h2>
+          </div>
+          <!-- Filled from ACTIVITY_TYPES so the boxes and the verb table can't
+               drift apart. -->
+          <div class="type-grid" id="type-grid"></div>
+          <p class="hint" id="type-hint"></p>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ------------------------------------------------------ add trader -->
+  <!--
+    role="dialog" sits on the box rather than on the backdrop, because the box is
+    the dialog and the backdrop is a scrim. aria-labelledby points at the title
+    span that is already there and already re-written when the modal opens in edit
+    mode, so the accessible name follows the heading instead of restating it.
+    Escape and the focus trap are wired in popup.js — the attributes alone only
+    promise modal behaviour, they don't implement it.
+  -->
+  <div class="modal-backdrop" id="wallet-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="wallet-modal-title">
+      <header class="modal-head">
+        <h2><span class="modal-icon">🗂</span> <span id="wallet-modal-title">Track new wallet</span></h2>
+        <button class="icon-btn" id="wallet-modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <input type="text" id="wallet-address" class="field" placeholder="WALLET ADDRESS" spellcheck="false" autocomplete="off">
+
+      <div class="row">
+        <div class="field-wrap">
+          <input type="text" id="wallet-name" class="field" placeholder="WALLET NAME" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="block-head tight">
+        <h2><span class="bookmark">🔖</span> Select label</h2>
+        <button class="round-btn" id="wallet-add-label" title="New label group" aria-label="New label group">+</button>
+      </div>
+      <div class="picker" id="wallet-label-picker"></div>
+
+      <p class="error" id="wallet-error" hidden></p>
+      <button class="primary-btn wide" id="wallet-submit" disabled>Track Wallet</button>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------- add label -->
+  <div class="modal-backdrop" id="label-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="label-modal-title">
+      <header class="modal-head">
+        <h2><span class="modal-icon">🔖</span> <span id="label-modal-title">New label group</span></h2>
+        <button class="icon-btn" id="label-modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <div class="row">
+        <div class="emoji-select">
+          <button class="emoji-btn" id="label-emoji-btn" aria-label="Choose emoji">
+            <span id="label-emoji">🔥</span>
+            <svg viewBox="0 0 24 24" class="caret" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="field-wrap">
+          <input type="text" id="label-name" class="field" placeholder="LABEL NAME" autocomplete="off">
+        </div>
+      </div>
+      <div class="emoji-grid" id="label-emoji-grid" hidden></div>
+      <p class="error" id="label-error" hidden></p>
+
+      <button class="primary-btn wide" id="label-submit" disabled>Create label</button>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------ category / topic picker -->
+  <!--
+    Two panes in one container: the category list, and one category's topics.
+    Rendered by renderPicker() rather than built twice in markup, because the
+    rows are the same rows — a name, a tick, and sometimes a chevron — and the
+    only difference is which list they come from.
+
+    Nothing here writes until Save. The picker is a staged edit, so backing out
+    with ✕ has to be a real undo; toggling straight into storage would make the
+    Reset button meaningless and re-key the sweep on every tap.
+  -->
+  <div class="modal-backdrop" id="topics-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="topics-modal-title">
+      <header class="modal-head">
+        <h2><span class="modal-icon">✦</span> <span id="topics-modal-title">All categories</span></h2>
+        <button class="icon-btn" id="topics-modal-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <button class="back-link" id="topics-back" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+        All categories
+      </button>
+
+      <div class="picker" id="topics-picker"></div>
+
+      <footer class="modal-foot">
+        <button class="ghost-btn" id="topics-reset">Reset</button>
+        <button class="primary-btn" id="topics-save">Save choices</button>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

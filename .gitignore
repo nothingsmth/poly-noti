@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+
+# Local Claude Code settings (machine-specific)
+.claude/
+
+# Node (in case a build step is added later)
+node_modules/
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/

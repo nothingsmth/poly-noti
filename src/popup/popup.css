@@ -1,0 +1,1115 @@
+/* Poly Noti popup — 480×600, the practical ceiling for an extension popup. */
+
+:root {
+  --bg: #000000;
+  --surface: #0F0F0F;
+  --surface-2: #171717;
+  --surface-3: #212121;
+  --line: #262626;
+  /* An unread card, and the same card hovered. Tokens rather than literals on
+     the rule because these are the *lightest* backgrounds a label name is ever
+     drawn on, which makes them the worst case for its contrast and the only
+     ones worth checking — test-palette.mjs reads both from here. The pair is
+     also the reason the values are this close together: the gap has to stay
+     wide enough to read as a hover, while the hovered fill still clears 4.5:1
+     against the darkest colour in the label palette (🌶️ #E8474F, at 4.51:1). */
+  --unread: #151515;
+  --unread-hover: #1A1A1A;
+  --text: #F4F5F6;
+  --text-dim: #8B9099;
+  --text-faint: #62666D;
+  /* "This is on": every checked switch, the picker's ticks, the slider thumb,
+     the section counts, the focus rings, and the toolbar badge Chrome draws
+     (see background.js, which has to repeat the literal and is checked against
+     this token by test-palette.mjs).
+
+     One token for one meaning. Green used to carry both this and BUY, which
+     meant a switch and a trade direction wore the same colour and neither read
+     as a claim about the other. */
+  --on: #0393FD;
+  /* BUY, and only BUY. Its whole job is to pair with the red on SELL — the one
+     colour convention in this feed that is read without being learned, which is
+     why the role stayed put when the "on" colour moved to blue.
+
+     Retuned with its red rather than on its own: the pair is read as a pair, so
+     moving one and not the other would have made the feed's two directions
+     disagree about how loud they are. The old #22D3A5 was a mint that leaned
+     cyan, close enough to 🐳's label colour to be a second thing on the card
+     saying "sea green". */
+  --green: #60BE81;
+  /* The new-market channel's own colour, on the discovery card's ✦ tile and on
+     every market card's stripe. A third accent rather than reusing --on: that
+     blue is the app's "this is on" colour and it is on every switch and tick in
+     the drawer, so a market card wearing it read as a state rather than as a
+     kind of card. Lavender is the only thing in the UI that is neither a label
+     emoji's sampled colour nor one of those two. */
+  --lav: #A78BFA;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/*
+ * The UA's [hidden] rule is display:none at the lowest precedence, so any
+ * class here that sets display (.drawer, .modal-backdrop, .emoji-grid) would
+ * silently override it and render every panel at once.
+ */
+[hidden] { display: none !important; }
+
+
+html, body {
+  width: 480px;
+  height: 600px;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ------------------------------------------------------------------ shell */
+
+.screen, .drawer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* No wash behind the header.
+ *
+ * There used to be a 320×220 radial glow of --on at .14 up in the top-right
+ * corner, on the theory that a flat black panel needs somewhere for the eye to
+ * enter. On an OLED screen it did the opposite: black is genuinely off there, so
+ * the wash reads as a smudge of backlight rather than as depth, and the corner it
+ * sits in is where the filter chips are — the one row where a faint colour
+ * gradient competes with chips that are themselves coloured.
+ *
+ * Kept as a comment rather than deleted silently: the discovery card still has
+ * its lavender version (.discovery::before), which is deliberate — that one is a
+ * wash inside a bordered card, not behind the whole panel. */
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 18px 12px;
+  flex: none;
+  position: relative;
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 3px;
+}
+
+.head h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+
+.head-actions { display: flex; gap: 8px; }
+
+.icon-btn {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.icon-btn:hover { color: var(--text); background: var(--surface-3); }
+
+/*
+ * The refresh button while a sweep is in flight. A poll takes long enough to
+ * notice and the feed doesn't move until it lands, so without this the click
+ * looks ignored. The class is toggled by popup.js and the button is disabled for
+ * the same window, which is what the dimming says.
+ */
+.icon-btn.is-loading { color: var(--text-faint); cursor: default; }
+.icon-btn.is-loading svg { animation: spin .9s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Motion here is feedback, not decoration — the dimming and the disabled state
+   already carry the meaning, so dropping the rotation costs nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.is-loading svg { animation: none; }
+}
+
+/* ------------------------------------------------------------------ chips */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  padding: 0 18px 12px;
+  overflow-x: auto;
+  flex: none;
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { display: none; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent, var(--text-dim));
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* Brighten rather than recolour, so a chip keeps its label's accent on hover. */
+.chip:hover { filter: brightness(1.18); }
+/* The selected chip fills with its own accent; "All" has none and stays white. */
+.chip[aria-pressed="true"] {
+  background: var(--accent, #fff);
+  border-color: var(--accent, #fff);
+  color: var(--bg);
+}
+
+/* ------------------------------------------------------------------- feed */
+
+.feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* No visible scrollbar anywhere in the popup, the same as .chips above. In a
+     600px window a permanent grey pill sits right against the cards' right edge
+     and reads as chrome the cards have to compete with. The cue is the card
+     clipped at the bottom edge; wheel, trackpad and keyboard all still scroll. */
+  scrollbar-width: none;
+}
+.feed::-webkit-scrollbar { display: none; }
+
+.card {
+  position: relative;
+  /* Column flex would otherwise shrink cards to fit instead of scrolling. */
+  flex: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 11px 13px 12px 16px;
+  overflow: hidden;
+  /* The whole card opens its market — same affordance as .row-item.clickable. */
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.card:focus-visible { outline: 2px solid var(--on); outline-offset: 2px; }
+
+/* Accent sampled from the label's emoji; see lib/labelColor.js. Transparent
+   when the trader has no label — a grey bar would imply a group. */
+.card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent, transparent);
+}
+
+.card.unread { background: var(--unread); }
+
+/* A cursor change alone is easy to miss on a dark card; the border moving is
+   what reads as "this responds to me". Must follow .card.unread — equal
+   specificity, so declaring it earlier would let an unread card's resting
+   fill beat its own hover and leave the brightest cards the least responsive. */
+.card:hover { border-color: var(--text-faint); background: var(--surface-2); }
+.card.unread:hover { background: var(--unread-hover); }
+
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.who { font-weight: 700; font-size: 14px; }
+
+/* Carries the label's accent. Falls back to white only defensively — the chip
+   is never rendered without a label to colour it. */
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent, var(--text));
+}
+
+.card-time { margin-left: auto; font-size: 12px; color: var(--text-faint); }
+
+.dots {
+  border: 0; background: none; padding: 0 2px;
+  color: var(--text-faint); cursor: pointer;
+  font-size: 15px; letter-spacing: 1px; line-height: 1;
+}
+.dots:hover { color: var(--text); }
+
+.card-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: #C9CDD3;
+  margin-bottom: 5px;
+  /* Two lines, then ellipsis. Titles carry two names either side of a "vs." —
+     one line would cut the second one off, and unbounded wrapping lets a long
+     title grow the card and cost a row of the feed. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* The whole trade as one sentence: "Bought 6 Yes @ $0.63 · US$3.85". This is
+   the same string the notification body builds, so a card and its toast read
+   alike — and a sentence can omit the price clause on a redemption, which is
+   what the old three-column grid could not do. */
+.card-line {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  /* One line, always. Outcome names run long — "Amelie Justine Hejtmanek" as
+     easily as "Yes" — and wrapping dropped the price clause onto a second row,
+     out of alignment with the total. */
+  white-space: nowrap;
+}
+
+/* The one part allowed to give way, since the shares and outcome degrade
+   gracefully to "3,958.14 Amelie Justine He…" while the verb, total and fills
+   badge are each meaningless truncated. min-width overrides the flex default of
+   auto, which refuses to shrink a child below its text and so pushed the total
+   past the card edge instead. */
+.card-line .detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-line .verb,
+.card-line .at,
+.card-line .sep,
+.card-line .total { flex: none; }
+
+.card-line .verb { font-weight: 700; }
+.card-line .verb.buy { color: var(--green); }
+.card-line .verb.sell { color: #CF5959; }
+.card-line .sep { color: var(--text-faint); }
+
+/* The total stays the anchor — it is what minUsdc filters on. */
+.card-line .total {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.fills {
+  margin-left: auto;
+  /* Must not be squeezed or wrapped: the badge is the one meaningful number on
+     a merged card, so it takes its space and the detail text gives way instead. */
+  flex: none;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+  text-transform: none;
+}
+
+/* ------------------------------------------------------------ market card */
+
+/*
+ * A new listing. The stripe and layout are a trade card's, so the two sit in one
+ * feed without a seam; what differs is that nothing here is a number, so the
+ * card leans on its title instead of an amount as the anchor.
+ */
+
+/* The question is the headline, so it is not shouted in uppercase like a trade's
+   market title — a full sentence in caps is a wall. */
+.card.market .card-title {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* The channel's name, in the channel's colour, where a trade shows its trader.
+   Lavender rather than the drawer's green: green is "switched on" everywhere
+   else in this popup, and this line names a channel rather than a state. Same
+   colour as the ✦ chip and the stripe down this card's edge. */
+.card.market .who { color: var(--lav); font-size: 13px; }
+
+/* Why the alert fired. Not bold like a trade's verb: it is provenance, and the
+   question above it is what you are meant to read first. */
+.card-line .reason { font-weight: 600; color: var(--text-dim); }
+
+/* The event title behind the question, when it says something different. It is
+   the one part allowed to give way here, same as .detail on a trade. */
+.card.market .card-line .detail { color: var(--text-faint); }
+
+/* Pushed right, and first to give way — an event title is context and tags are
+   context for the context. flex-shrink is what decides that, not the max-width:
+   `flex: none` here made .detail the only thing that could yield, so three intact
+   tags truncated the event title down to "MrBeast subscr…". The 8 is against
+   .detail's default 1, so the tags collapse well before the title is touched. */
+.card-line .tags {
+  margin-left: auto;
+  flex: 0 8 auto;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 38%;
+}
+
+/* --------------------------------------------------- permission notice */
+
+/*
+ * Amber, not red: nothing is broken and no data is lost — the feed below still
+ * fills — but the extension's whole reason for existing is silently inert, so
+ * it has to outrank a card without looking like a crash.
+ */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: none;
+  margin: 0 18px 12px;
+  padding: 11px 13px;
+  background: rgba(245, 158, 11, 0.09);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 12px;
+}
+
+.notice-icon { font-size: 15px; line-height: 1.3; }
+/* min-width lets the paragraph wrap instead of forcing the flex row wider. */
+.notice-text { flex: 1; min-width: 0; }
+.notice-text strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #FBBF24;
+  margin-bottom: 2px;
+}
+.notice-text p { font-size: 11.5px; line-height: 1.45; color: var(--text-dim); }
+
+.notice-fix {
+  flex: none;
+  align-self: center;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: 999px;
+  background: transparent;
+  color: #FBBF24;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.notice-fix:hover { background: rgba(245, 158, 11, 0.16); }
+
+/* Steps live inside .notice-text so they indent under the heading rather than
+   under the emoji. Revealed by the button; collapsed on every popup open. */
+.notice-steps {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(245, 158, 11, 0.22);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.notice-steps li { margin-left: 14px; }
+.notice-steps code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------ poll status */
+
+/*
+ * One line under the chips, shown only when a refresh failed. Deliberately not
+ * styled as a second .notice: that banner is a standing condition you have to go
+ * and fix, this is a single attempt that didn't land and will clear itself on
+ * the next one. Dim rather than red for the same reason — the feed underneath is
+ * still the last good answer, not an error state.
+ */
+.poll-status {
+  margin: 0 18px 10px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* ----------------------------------------------------------- empty state */
+
+.empty {
+  margin: auto;
+  text-align: center;
+  color: var(--text-faint);
+  padding: 28px 20px;
+}
+.empty .big { font-size: 30px; margin-bottom: 10px; }
+.empty h3 { font-size: 15px; color: var(--text-dim); margin-bottom: 5px; }
+.empty p { font-size: 13px; line-height: 1.5; }
+
+/* ----------------------------------------------------------------- drawer */
+
+.drawer { background: var(--bg); z-index: 5; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 0 18px 24px; scrollbar-width: none; }
+.drawer-body::-webkit-scrollbar { display: none; }
+
+/* "Quick settings" to "WATCHED TRADERS" measured 38px, which read as a hole
+ * rather than as a gap. Three things stacked: .head's 12px bottom padding,
+ * .block's 18px top padding, and — the part not visible in either number — the
+ * 48px-tall + Add trader button setting the section head's height, so
+ * align-items: center floats the 16px caps heading 8px below where the padding
+ * alone would put it.
+ *
+ * Scoped to the drawer, and to its first section, on purpose. .head is shared
+ * with the main screen, where it is followed by the chips row and needs its
+ * 12px; and the sections after this one are separated by an <hr>, where the
+ * full 18px is what keeps the rule from crowding the words under it. */
+.drawer .head { padding-bottom: 4px; }
+.drawer-body .block:first-child { padding-top: 8px; }
+
+.primary-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px;
+  border: 0;
+  border-radius: var(--radius);
+  background: #F1F2F4;
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.primary-btn:hover { background: #fff; }
+.primary-btn:disabled { background: var(--surface-3); color: var(--text-faint); cursor: not-allowed; }
+.primary-btn .plus { font-size: 18px; font-weight: 400; }
+.primary-btn.wide { margin-top: 16px; }
+
+/* A press has to register before the DOM does — opening a modal takes a frame,
+   and until then the click looks ignored. The ring is the one the cards already
+   use, and it is here because every button in the drawer was invisible to the
+   keyboard: only .card and .row-item.clickable had one. */
+.primary-btn:active { transform: translateY(1px); }
+.primary-btn:focus-visible { outline: 2px solid var(--on); outline-offset: 2px; }
+
+/*
+ * Add trader, folded into the section head it acts on.
+ *
+ * It was a full-width block sitting above the section, which spent the drawer's
+ * most valuable strip — the first thing under the title — on an action you take
+ * once, and left the head as a separate line below it. In the head it costs no
+ * row at all, which in a panel capped at 600px is one more trader visible
+ * without scrolling.
+ *
+ * Neutral rather than blue, deliberately: --on is "this is on" on every switch
+ * and count in this drawer, so a permanent button wearing it would read as a
+ * state rather than as a control. `width: auto` and `flex: none` undo the
+ * block form above — the base class is shared with the two modal submits and
+ * the picker's Save, which stay full-width.
+ */
+.primary-btn.inline {
+  width: auto;
+  flex: none;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+}
+.primary-btn.inline .plus { font-size: 14px; }
+
+.block { padding: 18px 0 4px; }
+.block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.block-head.tight { margin: 14px 0 9px; }
+
+/* The head's own text, kept together. The count is a property of the label —
+   "watched traders: 4" — not a second column, but the head's space-between flung
+   it to the far edge, 300px from the words it belongs to, where it read as an
+   unrelated number. Grouping them hands the free space to the button instead. */
+.head-label { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+
+.block-head h2 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.count { font-size: 13px; font-weight: 700; color: var(--on); }
+.rule { border: 0; border-top: 1px solid var(--line); }
+.hint { font-size: 11.5px; color: var(--text-faint); margin-top: 9px; line-height: 1.45; }
+
+.round-btn {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.round-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-3); }
+/* Reached only when every label emoji is taken; the title says so. */
+.round-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ---------------------------------------------------------- switch/setting */
+
+.switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .track {
+  position: absolute; inset: 0;
+  background: var(--surface-3);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .18s;
+}
+.switch .track::before {
+  content: "";
+  position: absolute;
+  width: 20px; height: 20px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .18s;
+}
+.switch input:checked + .track { background: var(--on); }
+.switch input:checked + .track::before { transform: translateX(20px); }
+
+/* A switch with its name beside it. The whole row is the <label>, so the text
+   is a hit target too — a 46px switch is a small thing to aim at. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 2px;
+  cursor: pointer;
+}
+.setting-text { flex: 1; min-width: 0; }
+.setting-text strong { display: block; font-size: 14px; font-weight: 600; color: var(--text); }
+.setting-sub {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+/* -------------------------------------------------------- lists in drawer */
+
+.trader-list, .label-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* "Show trader notifications" off. Only the per-row switches dim — the rows stay
+   full strength and clickable, because editing a trader still works and only the
+   switch is the control this overrides. */
+.trader-list.bulk-muted .switch { opacity: .32; }
+
+.row-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.row-item .emoji { font-size: 16px; }
+.row-item .name { font-weight: 700; font-size: 14px; }
+.row-item .sub { font-size: 11.5px; color: var(--text-faint); }
+.row-item .grow { flex: 1; min-width: 0; }
+.row-item .name, .row-item .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.row-btn, .x-btn {
+  border: 0; background: none;
+  color: var(--text-faint);
+  cursor: pointer; font-size: 15px;
+  padding: 2px 4px;
+  flex: none;
+}
+.x-btn:hover { color: #F87171; }
+
+/* The whole row opens its editor. */
+.row-item.clickable { cursor: pointer; }
+.row-item.clickable:hover { background: var(--surface-2); border-color: var(--text-faint); }
+.row-item.clickable:focus-visible { outline: 2px solid var(--on); outline-offset: 2px; }
+
+/* Fixed once tracking starts — see openWalletModal(). */
+.field[readonly] { color: var(--text-dim); cursor: default; }
+.field[readonly]:focus { border-color: var(--line); }
+
+.muted-note { font-size: 13px; color: var(--text-faint); padding: 2px 0 6px; }
+
+/* ------------------------------------------------------------ watch tags */
+
+/* Keywords wrap as pills rather than stacking as rows: they are one short word
+   each, and forty of them as full-width rows would bury the category picker
+   under a scroll. */
+.watch-add { align-items: stretch; }
+.watch-add .field { padding: 11px 13px; }
+
+.watch-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.watch-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 6px 5px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.watch-tag .x-btn { font-size: 12px; padding: 0 2px; }
+
+/* Its own row when there are no keywords, so the note doesn't sit in the pill
+   flow and inherit the gap. */
+.watch-tags .muted-note { padding: 0; }
+
+/* ------------------------------------------------------- discovery card */
+
+/* The one drawer block that is not about a trader, so it is a surface of its
+   own rather than another run of rows on the page background. */
+.discovery {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 15px 15px 14px;
+  position: relative;
+  overflow: hidden;
+}
+/* Same wash as the feed header, in the card's own colour — it is what carries
+   the lavender past the 34px tile. */
+.discovery::before {
+  content: "";
+  position: absolute;
+  top: -70px; left: -30px;
+  width: 240px; height: 170px;
+  background: radial-gradient(closest-side, rgba(167, 139, 250, .14), transparent);
+  pointer-events: none;
+}
+
+.disc-head { display: flex; align-items: flex-start; gap: 11px; position: relative; }
+.disc-tile {
+  width: 34px; height: 34px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--lav);
+  color: #12101B;
+  display: grid; place-items: center;
+  font-size: 17px;
+  line-height: 1;
+}
+.disc-text { flex: 1; min-width: 0; }
+.disc-text h3 { font-size: 16px; font-weight: 700; margin-top: 3px; }
+.disc-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+/* The way into the picker. Reads as one sentence — what it is on the left, what
+   is chosen on the right — so the card can say the whole subscription without
+   listing it. */
+.disc-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+  padding: 12px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 13.5px;
+  cursor: pointer;
+  position: relative;
+}
+.disc-row:hover { background: var(--surface-3); border-color: var(--text-faint); }
+.disc-row-label { font-weight: 700; flex: none; }
+/* Truncates rather than wrapping: it is a summary, and the picker behind it is
+   where the full list lives. */
+.disc-row-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Set once something is subscribed, so "nothing yet" and "all of Politics" are
+   not the same grey. */
+.disc-row.chosen .disc-row-value { color: var(--lav); font-weight: 600; }
+.disc-row .chev { width: 16px; height: 16px; flex: none; color: var(--text-faint); }
+
+/* ------------------------------------------------- advanced settings */
+
+/* The only expanding row in the app, so it has to look different from the four
+ * .disc-row siblings that navigate: its chevron points down when closed and
+ * turns to point up when open, rather than right-and-stays-right. No margin-top,
+ * because this row sits straight under an <hr> that already spaces it. */
+.adv-row { margin-top: 0; }
+/* The summary column is empty here — there is no value to preview, since the
+ * choice is nine checkboxes and no sentence sums it up — so the chevron is
+ * pushed to the edge by the label growing instead. */
+.adv-row .disc-row-label { flex: 1; text-align: left; }
+.adv-row .chev { transform: rotate(90deg); transition: transform .18s ease; }
+.adv-row[aria-expanded="true"] .chev { transform: rotate(-90deg); }
+.adv-row[aria-expanded="true"] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+/* Reads as the bottom half of the row it opened from: same fill, same border,
+ * corners squared where the two meet. Otherwise the panel would float free and
+ * nothing would say which row it belonged to. */
+.adv-panel {
+  padding: 2px 13px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+}
+.adv-panel .block-head.tight { margin: 12px 0 10px; }
+
+/* Two columns: nine labels, the longest of them "Maker rebates", and one column
+ * would make the panel taller than the drawer's remaining scroll. */
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 10px;
+}
+.type-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.type-box input {
+  width: 15px; height: 15px;
+  flex: none;
+  /* color-scheme, not just accent-color: accent-color only paints the *checked*
+     fill, so the seven unticked boxes were rendering as Chrome's default white
+     tiles — the brightest thing in the drawer, and on a panel about types you
+     have switched off. Dark scheme gives them the dark fill and lets
+     accent-color keep the tick blue. */
+  color-scheme: dark;
+  accent-color: var(--on);
+  cursor: pointer;
+}
+/* Checked is the state worth reading at a glance — which types are coming in,
+   not which are not — so it takes the full-strength text colour. */
+.type-box input:checked + span { color: var(--text); }
+.type-box span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The nothing-selected warning. Amber rather than .error's red: no request will
+   be made, which is a consequence of a real choice, not a failure. */
+.adv-panel .hint.warn { color: #D6A44E; }
+
+/* ---------------------------------------------------------------- slider */
+
+.slider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--surface-3);
+  border-radius: 999px;
+  outline: none;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--on);
+  cursor: pointer;
+}
+
+/* ----------------------------------------------------------------- modal */
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .62);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 20;
+}
+
+.modal {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  scrollbar-width: none;
+}
+.modal::-webkit-scrollbar { display: none; }
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.modal-head h2 { font-size: 19px; font-weight: 700; display: flex; align-items: center; gap: 9px; }
+.modal-icon { font-size: 17px; }
+
+.field {
+  width: 100%;
+  padding: 15px 16px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+}
+.field::placeholder {
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  font-weight: 700;
+}
+.field:focus { border-color: var(--text-faint); }
+
+.row { display: flex; gap: 10px; margin-top: 10px; }
+/* Lets the name input take the leftover width beside the emoji button. */
+.field-wrap { flex: 1; }
+
+
+.emoji-select { position: relative; }
+.emoji-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 11px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text-faint);
+  font-size: 18px;
+  cursor: pointer;
+}
+.emoji-btn .caret { width: 15px; height: 15px; }
+
+/*
+ * Flows inline rather than floating: in a 480px popup an absolute dropdown
+ * covers the submit button behind it.
+ */
+.emoji-grid {
+  margin-top: 10px;
+  display: grid;
+  /* 6 columns × 18 choices = three full rows. Changing EMOJI_CHOICES without
+     changing this leaves an orphan row. */
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.emoji-grid button {
+  border: 0; background: none;
+  font-size: 19px;
+  padding: 6px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.emoji-grid button:hover:not(:disabled) { background: var(--surface-3); }
+/* An emoji another label already holds. Dimmed rather than hidden so the grid
+   keeps a stable shape and you can see the choice exists — the title says who
+   has it. */
+.emoji-grid button:disabled {
+  opacity: .22;
+  cursor: not-allowed;
+}
+
+.picker { display: flex; flex-direction: column; gap: 7px; }
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  /* Buttons don't inherit page colour or text alignment — without these the
+     name renders in the UA's near-black buttontext on a dark tile, and centres
+     itself over the row instead of starting at the left edge like every other
+     list in the popup. */
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  /* Anchors the hairline above a .divide row. */
+  position: relative;
+}
+.pick .name { flex: 1; font-weight: 700; font-size: 14px; }
+
+/* The action sheet's rows, and only those. A sheet row is one word of intent
+   with nothing beside it, so centring reads as a menu; the label and topic
+   pickers share .pick but carry a swatch, a tick or a sub line, and centring
+   those would leave their text drifting between fixed ornaments. Scoped to the
+   .name span rather than the row so .pick's own text-align:left still holds for
+   anything else the sheet might grow. */
+.modal.sheet .pick .name { text-align: center; }
+/* Two-line variant: the name with a count or a state under it. A column so the
+   two spans stack — they are inline elements, and left as-is the sub runs on
+   after the name and its ellipsis never applies. .name keeps its flex:1 for the
+   single-line rows and is switched off inside this. */
+.pick .text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pick .text .name { flex: none; }
+.pick .sub {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-faint);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Something under this category is subscribed. The row itself has no tick — it
+   navigates rather than toggles — so this line is the only thing carrying that. */
+.pick .sub.on { color: var(--lav); }
+.pick .chev { width: 16px; height: 16px; flex: none; color: var(--text-faint); }
+.pick .tick {
+  width: 17px; height: 17px;
+  border: 2px solid var(--surface-3);
+  border-radius: 50%;
+  flex: none;
+}
+.pick[aria-pressed="true"] .tick { border-color: var(--on); background: var(--on); }
+/* The market channel's colour, not the drawer's "on" green — the same
+   distinction the ✦ chip and the card stripe draw. */
+#topics-picker .pick[aria-pressed="true"] .tick { border-color: var(--lav); background: var(--lav); }
+
+/* -------------------------------------------------- category/topic picker */
+
+/* Head and footer pinned, rows scrolling between them. A category can hold ten
+   topics plus its "All" row, which is taller than the 600px popup — and Save is
+   the one control that must never be the thing you have to scroll to find. */
+#topics-modal .modal {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow: hidden;
+}
+#topics-picker { overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: none; }
+#topics-picker::-webkit-scrollbar { display: none; }
+#topics-picker .pick { padding: 10px 12px; }
+/* A hairline above the run of topics, so "All Politics" reads as the row the
+   ones below it are an alternative to rather than the first of them. */
+#topics-picker .pick.divide { margin-top: 9px; }
+#topics-picker .pick.divide::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: -5px;
+  border-top: 1px solid var(--line);
+}
+
+/* Sits above the list rather than in the header: the header names the pane you
+   are in, and this is the way out of it. */
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -6px 0 11px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.back-link:hover { color: var(--text); }
+.back-link svg { width: 15px; height: 15px; }
+
+.modal-foot {
+  display: flex;
+  gap: 9px;
+  margin-top: 15px;
+  flex: none;
+}
+.modal-foot .primary-btn { flex: 1; padding: 13px; margin-top: 0; }
+.ghost-btn {
+  padding: 13px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: none;
+}
+.ghost-btn:hover:not(:disabled) { color: var(--text); border-color: var(--text-faint); }
+.ghost-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Neutral tile holding the label's emoji; the label picker is its only user. */
+.pick .swatch-dot {
+  width: 22px; height: 22px;
+  flex: none;
+  border-radius: 7px;
+  background: var(--surface-3);
+  display: grid; place-items: center;
+  font-size: 12px;
+}
+
+.error { color: #F87171; font-size: 12.5px; margin-top: 11px; }
