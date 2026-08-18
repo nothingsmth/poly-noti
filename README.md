@@ -52,3 +52,12 @@ src/
 Early development (v0.6.7). Notifications are based on public on-chain / API
 data, so partial limit-order fills (e.g. 10 of 100) may not be individually
 distinguishable.
+
+## Disclaimer
+
+Unofficial project, not affiliated with or endorsed by Polymarket. Uses public
+API endpoints only. Nothing here is financial advice.
+
+## License
+
+[MIT](LICENSE)
