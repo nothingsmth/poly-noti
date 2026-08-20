@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Poly Noti — desktop notifications for Polymarket trader activity" width="100%">
+</p>
+
 # Poly Noti
 
 Desktop notifications for [Polymarket](https://polymarket.com) trader activity. Watch any wallet by address — no wallet connection required.
