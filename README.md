@@ -67,3 +67,7 @@ API endpoints only. Nothing here is financial advice.
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">Made by <a href="https://x.com/Vlad_Web3">@vlad_web3</a></p>
