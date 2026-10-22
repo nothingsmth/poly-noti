@@ -128,8 +128,13 @@ export async function fetchNewEvents({ sinceId = 0, pageLimit = EVENT_PAGE_LIMIT
       offset: String(page * EVENT_PAGE_SIZE),
     });
 
+    // `no-store` because Gamma answers with `cache-control: max-age=300`, and the
+    // URL is identical every sweep — the browser would otherwise hand back the
+    // same five-minute-old page ten times over, and every listing would arrive
+    // up to five minutes late on a 30-second alarm.
     const res = await fetch(`${GAMMA_API}/events?${params}`, {
       headers: { accept: 'application/json' },
+      cache: 'no-store',
     });
     if (!res.ok) throw new Error(`Gamma API ${res.status}`);
 

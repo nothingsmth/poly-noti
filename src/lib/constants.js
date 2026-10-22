@@ -207,7 +207,7 @@ export const MAX_MARKET_TOASTS_PER_POLL = 8;
  * many of those ids it remembers. Must comfortably exceed the markets one sweep
  * can return, or a market would be re-announced as new after falling off the end.
  */
-export const SEEN_MARKETS_LIMIT = 1500;
+export const SEEN_MARKETS_LIMIT = 5000;
 
 /**
  * Categories offered in the drawer, as Gamma tag slugs, each with the topics
@@ -250,7 +250,7 @@ export const MARKET_CATEGORIES = [
       { slug: 'primaries', label: 'Primaries' },
       { slug: 'congress', label: 'Congress' },
       { slug: 'courts', label: 'Courts' },
-      { slug: 'us-election', label: 'US Election' },
+      { slug: 'us-elections', label: 'US Election' },
       { slug: 'gov-shutdown', label: 'Gov Shutdown' },
       { slug: 'epstein', label: 'Epstein' },
       { slug: 'trump-cabinet', label: 'Trump Cabinet' },
@@ -310,7 +310,7 @@ export const MARKET_CATEGORIES = [
     ],
   },
   {
-    slug: 'culture',
+    slug: 'pop-culture',
     label: 'Culture',
     emoji: '🎬',
     topics: [
@@ -370,15 +370,34 @@ export const MARKET_CATEGORIES = [
  * these and only 10 were genuine listings.
  *
  * `hide-from-new` is Polymarket's own instruction that they do not belong on its
- * New page, so this is their signal rather than a guess of ours; every such
- * event also carries `recurring`, and no genuine event carried either. Both are
- * listed because they are maintained separately and either one drifting alone
- * should not reopen the flood.
+ * New page, so this is their signal rather than a guess of ours, and it is the
+ * only one. Every rolling event carries it, weather and crypto alike.
  *
- * Not filtered on `seriesSlug`, which looks like the obvious test and is wrong:
- * every event has one, including real fixtures (`bel1-games`).
+ * Not filtered on `recurring`, which every rolling event also carries and which
+ * looked like a safe second signal. It is not: Polymarket tags plenty of genuine
+ * listings `recurring` too — "Next DeepSeek Flash released by…?", "How many
+ * Tesla deliveries in Q4?", every MrBeast market, the daily Trump markets — and
+ * shows them on its New page. Measured against live Gamma, ~70% of new tech and
+ * economy events carried `recurring` without `hide-from-new`, so filtering on it
+ * silently swallowed most of those categories.
+ *
+ * Not filtered on `seriesSlug` either, which looks like the obvious test and is
+ * wrong: every event has one, including real fixtures (`bel1-games`).
  */
-export const ROLLING_TAGS = ['hide-from-new', 'recurring'];
+export const ROLLING_TAGS = ['hide-from-new'];
+
+/**
+ * Tag slugs Polymarket has retired, mapped to the live slug that replaced them.
+ *
+ * A subscription to a dead slug matches nothing, silently, forever. Stored
+ * subscriptions are rewritten through this on read (see store.js), the same
+ * read-time approach normalizeSettings takes, so an install that subscribed to
+ * the old slug keeps its choice rather than losing it.
+ */
+export const RENAMED_TAG_SLUGS = {
+  culture: 'pop-culture',
+  'us-election': 'us-elections',
+};
 
 /** Watch keywords a user may store. A cap so the poll's matching stays cheap. */
 export const WATCH_LIMIT = 40;

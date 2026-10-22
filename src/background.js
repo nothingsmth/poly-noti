@@ -223,7 +223,11 @@ async function pollNewMarkets({ settings, feed }) {
   // announced are equally "already handled", and leaving the suppressed out would
   // re-announce them on the very next sweep — the cap would then be a delay
   // rather than a cap.
-  for (const m of matched) seen.add(String(m.market?.id ?? ''));
+  //
+  // Oldest first: `matched` is newest-first, and setMarketCursor trims from the
+  // front, so adding in that order would put the newest ids first in line to be
+  // dropped — and re-announced on the next sweep.
+  for (const m of [...matched].reverse()) seen.add(String(m.market?.id ?? ''));
 
   // The first sweep after subscribing exists only to establish the cursor, the
   // same bargain the per-wallet seeding gate strikes: everything Gamma returns

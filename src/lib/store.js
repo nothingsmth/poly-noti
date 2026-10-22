@@ -30,6 +30,7 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_TYPES,
   MODE_MUTE,
+  RENAMED_TAG_SLUGS,
   SEEN_KEYS_LIMIT,
   SEEN_MARKETS_LIMIT,
   WATCH_LIMIT,
@@ -102,9 +103,21 @@ function normalizeTypes(types) {
     .filter((t) => types.includes(t) && known.has(t));
 }
 
+/**
+ * Rewrite retired tag slugs to their replacements; see RENAMED_TAG_SLUGS.
+ * Deduped afterwards, since someone holding both the old and new slug would
+ * otherwise end up with two copies of the same subscription.
+ */
+function renameSlugs(list) {
+  if (!Array.isArray(list)) return [];
+  return [...new Set(list.map((s) => RENAMED_TAG_SLUGS[s] || s))];
+}
+
 export async function getAll() {
   const data = await chrome.storage.local.get(DEFAULTS);
   data.settings = normalizeSettings(data.settings);
+  data.categories = renameSlugs(data.categories);
+  data.topics = renameSlugs(data.topics);
   return data;
 }
 
@@ -324,8 +337,8 @@ export async function getSubscriptions() {
   ]);
   return {
     watches: Array.isArray(watches) ? watches : [],
-    categories: Array.isArray(categories) ? categories : [],
-    topics: Array.isArray(topics) ? topics : [],
+    categories: renameSlugs(categories),
+    topics: renameSlugs(topics),
     allMarkets: allMarkets === true,
   };
 }
